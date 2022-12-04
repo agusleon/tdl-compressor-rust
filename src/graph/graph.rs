@@ -12,8 +12,14 @@ impl Graph {
             root
         }
     }
+
+    pub fn search(&self, byte: u8) -> Option<String> {
+        self.root.search(byte, String::new())
+    }
     
 }
+
+
 
 // Implementar el trait display para ver lindo el grafo
 
