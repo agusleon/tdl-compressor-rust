@@ -97,7 +97,7 @@ impl Compressor {
     pub fn make_byte_dictionary(&self, frecuency_dictionary: HashMap<u8, usize>) -> Result<HashMap<u8, String>, CompressionError>{
     
         let mut compression_dictionary = HashMap::new();
-
+        
         match &self.graph {
             Some(graph) => {
                 for byte in frecuency_dictionary.keys() {
@@ -118,7 +118,7 @@ impl Compressor {
     pub fn from_hashmap_to_string(&self, compression_dictionary: HashMap<u8, String>) {
 
         for (key,value) in compression_dictionary {
-            
+
         }
     }
     
