@@ -1,3 +1,5 @@
+use crate::utils::error::CompressionError;
+
 use super::node::Node;
 
 #[derive(Debug)]
@@ -13,9 +15,16 @@ impl Graph {
         }
     }
 
-    pub fn search(&self, byte: u8) -> Option<String> {
-        self.root.search(byte, String::new())
+    pub fn search(&self, byte: u8) -> Result<String, CompressionError> {
+
+        match self.root.search(byte, String::new()) {
+            Some(path) => {return Ok(path)},
+            None => {return Err(CompressionError::FullNode)}
+        }
+        
+        
     }
+
     
 }
 

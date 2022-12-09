@@ -50,12 +50,16 @@ impl Node {
     }
 
     pub fn search(&self, byte: u8, mut path: String) -> Option<String> {
+        
         if self.byte == Some(byte) {
             return Some(path);
         }
         else if self.node_left.is_some(){
+
             path.push('0');
+
             let new_path = self.node_left.as_ref().unwrap().search(byte, path.clone());
+            
             match new_path{
                 Some(new_path) => return Some(new_path),
                 None => {
@@ -81,6 +85,7 @@ impl Node {
             return None;
         }
     }
+
 }
 
 // We implement some traits so we can use the BinaryHeap object as a MinHeap directly with the Node object
