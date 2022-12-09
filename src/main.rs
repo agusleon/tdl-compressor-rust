@@ -6,7 +6,7 @@ fn main() {
 
     let directory = "./src/".to_string();
 
-    match Compressor::new(directory, "test_agus.txt".to_string()) {
+    match Compressor::new(directory, "car.png".to_string()) {
         Ok(mut compressor) => {
             match compressor.start_compressor() {
                 Ok(_) => {println!("Finished compressing!")},

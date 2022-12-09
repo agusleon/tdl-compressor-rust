@@ -2,7 +2,7 @@ use std::collections::{BinaryHeap, HashMap};
 use crate::{graph::{node::Node, graph::Graph}, utils::error::CompressionError, file::{file::read_file}};
 use itertools::Itertools;
 use std::fs::File;
-use std::os::unix::fs::FileExt;
+use std::io::Write;
 
 const BYTE_LENGTH: usize = 8;
 
@@ -114,64 +114,57 @@ impl Compressor {
 
         Ok(compression_dictionary)
     }
+
+    pub fn from_hashmap_to_string(&self, compression_dictionary: HashMap<u8, String>) {
+
+        for (key,value) in compression_dictionary {
+            
+        }
+    }
     
-    pub fn compress(&self, frecuency_dictionary: HashMap<u8, usize>) -> Result<(),CompressionError>{
+    pub fn compress(&mut self, frecuency_dictionary: HashMap<u8, usize>) -> Result<(),CompressionError>{
     
         let compression_dictionary = self.make_byte_dictionary(frecuency_dictionary)?;
         println!("{:?}", compression_dictionary);
-        println!("BYTES: {:?}", self.data);
+
+
     
         let mut i = 0;
-    
-    
-        while i < self.original_file_length {
-    
-            let mut compressed_bytes = Vec::<u8>::new();
-            let mut compressed_string = String::new();
-            let mut j = 0;
-    
-            //Escribimos en un archivo nuevo de a 100
-            while j < 100 && i + j < self.original_file_length {
-    
-                let byte = self.data[i + j];
-                let path = compression_dictionary.get(&byte);
-    
-                match path {
-                    Some(path) => {
-    
-                        for char in path.chars() {
-                            if compressed_string.len() == BYTE_LENGTH {
-                                
-                                let byte = u8::from_str_radix(&compressed_string, 2)?;
-    
-                                compressed_bytes.push(byte);
-                                compressed_string = String::new();
-                            }
-                            
-                            compressed_string = format!("{}{}", compressed_string, char);
-    
-                        }
-                        
-                    },
-                    None => return Err(CompressionError::FullNode)
-                }
-    
-                j += 1;
-            }
-    
-            let left_bits = BYTE_LENGTH - compressed_string.len();
-            let complete_zeros = std::iter::repeat("0").take(left_bits).collect::<String>();
-            compressed_string = format!("{}{}", compressed_string, complete_zeros);
-    
-            let byte = u8::from_str_radix(&compressed_string, 2)?;
-            compressed_bytes.push(byte);
-    
-            self.compressed_file.write_at(&compressed_bytes,i.try_into().unwrap())?;
+        let mut compressed_string = String::new();
+        let mut compressed_bytes = Vec::<u8>::new();
+
+        println!("{:?}",self.data);
+
+        for byte in self.data.iter() {
+
+            let path = compression_dictionary.get(&byte);
+            println!("{:?} : {:?}",byte, path.unwrap());
+
             
-            i += j;
-    
-            println!("Compressed {:?}% of file", i*100/self.original_file_length);
+            if compressed_string.len() >= BYTE_LENGTH {
+
+                let mut byte_compressed = 0;
+                
+                if compressed_string.len() > BYTE_LENGTH {
+                    let first_eight = &compressed_string[0..8];
+                    let tail = &compressed_string[8..];
+                    byte_compressed = u8::from_str_radix(&first_eight, 2)?;
+                    compressed_string = format!("{}", tail);
+                } else {
+                    byte_compressed = u8::from_str_radix(&compressed_string, 2)?;
+                    compressed_string = String::new();
+                }
+
+                compressed_bytes.push(byte_compressed);
+                
+                println!("{}", compressed_string);
+
+            }
+            compressed_string = format!("{}{}", compressed_string, path.unwrap());
         }
+
+        println!("{:?}",compressed_bytes);
+        self.compressed_file.write(&compressed_bytes)?;
     
         Ok(())
     
