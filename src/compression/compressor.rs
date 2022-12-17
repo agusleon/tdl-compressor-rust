@@ -3,8 +3,12 @@ use crate::{graph::{node::Node, graph::Graph}, utils::error::CompressionError, f
 use itertools::Itertools;
 use std::fs::File;
 use std::io::Write;
+use std::fs;
+
+use serde_json::{Value};
 
 const BYTE_LENGTH: usize = 8;
+
 
 #[derive(Debug)]
 pub struct Compressor {
@@ -18,15 +22,25 @@ pub struct Compressor {
 
 impl Compressor {
 
-    pub fn new(directory:String, filename: String) -> Result<Self, CompressionError> {
-
+    pub fn new(directory:String, filename: String, compression: bool) -> Result<Self, CompressionError> {
+        if !compression {
+            let mut compressor = Compressor {
+                filename: filename.clone(),
+                data: Vec::new(),
+                original_file_length: 0,
+                compressed_file: File::create(format!("./decompressed_files/{}_decompressed.txt",filename))?,
+                compressed_file_length: 0,
+                graph: None
+            };
+            return Ok(compressor);
+        } 
         let filepath = format!("{}{}", directory, filename);
         let bytes = read_file(&filepath)?;
-        println!("{}", filepath);
+        //println!("{}", filepath);
         let path_vec: Vec<&str> = filename.split('.').collect();
-        println!("{:?}", path_vec);
+        //println!("{:?}", path_vec);
         let filename = path_vec[0].to_string();
-        println!("{}", filename);
+        //println!("{}", filename);
         let file_length = bytes.len();
 
         let compressed_filename = format!("./compressed_files/{}_compressed",filename);
@@ -42,6 +56,8 @@ impl Compressor {
         };
 
         Ok(compressor)
+        
+        
     }
 
     pub fn add_graph(&mut self, graph: Graph) {
@@ -51,6 +67,7 @@ impl Compressor {
     pub fn start_compressor(&mut self) -> Result<(), CompressionError> {
 
         let hash_map = self.calculate_byte_frequency();
+        println!("{:?}", hash_map);
         let mut min_heap = self.from_bytes_to_min_heap(hash_map.clone());
         let graph = self.build_graph(&mut min_heap)?;
         self.add_graph(graph);
@@ -110,7 +127,7 @@ impl Compressor {
             None => {return Err(CompressionError::FullNode)}
         }
     
-        println!("{:?}", compression_dictionary);
+        //println!("{:?}", compression_dictionary);
 
         Ok(compression_dictionary)
     }
@@ -124,8 +141,9 @@ impl Compressor {
     
     pub fn compress(&mut self, frecuency_dictionary: HashMap<u8, usize>) -> Result<(),CompressionError>{
     
-        let compression_dictionary = self.make_byte_dictionary(frecuency_dictionary)?;
-        println!("{:?}", compression_dictionary);
+        let compression_dictionary = self.make_byte_dictionary(frecuency_dictionary.clone())?;
+        //println!("{:?}", frecuency_dictionary);
+        //println!("{:?}", compression_dictionary);
 
 
     
@@ -133,12 +151,12 @@ impl Compressor {
         let mut compressed_string = String::new();
         let mut compressed_bytes = Vec::<u8>::new();
 
-        println!("{:?}",self.data);
+        //println!("{:?}",self.data);
 
         for byte in self.data.iter() {
 
             let path = compression_dictionary.get(&byte);
-            println!("{:?} : {:?}",byte, path.unwrap());
+            //println!("{:?} : {:?}",byte, path.unwrap());
 
             
             if compressed_string.len() >= BYTE_LENGTH {
@@ -157,18 +175,51 @@ impl Compressor {
 
                 compressed_bytes.push(byte_compressed);
                 
-                println!("{}", compressed_string);
+                //println!("{}", compressed_string);
 
             }
             compressed_string = format!("{}{}", compressed_string, path.unwrap());
         }
 
-        println!("{:?}",compressed_bytes);
+        //println!("{:?}",compressed_bytes);
+        
+
+        // pasar frecuency_dictionary a string y despues a bytes
+        
+        //println!("{:?}", frecuency_dictionary);
+        serde_json::to_writer(&self.compressed_file, &frecuency_dictionary).unwrap();
         self.compressed_file.write(&compressed_bytes)?;
     
         Ok(())
     
     }
+
+    pub fn decompress(&mut self, file_path: String) -> Result<(), CompressionError> {
+        println!("{:?}", file_path);
+        let file_content = read_file(&file_path)?;
+        let mut frequency_bytes = Vec::<u8>::new();
+        let mut i = 0;
+        for byte in file_content.iter() {
+            if *byte == " ".as_bytes()[0] {
+                continue;
+            }
+            frequency_bytes.push(*byte);
+            i += 1;
+            if *byte == "}".as_bytes()[0]{
+                break;
+            }
+        }
+        let frecuency_dictionary_str = std::str::from_utf8(&frequency_bytes).unwrap();
+        let frecuency_dictionary:HashMap<u8, usize> = serde_json::from_str(&frecuency_dictionary_str).unwrap();
+
+        let mut min_heap = self.from_bytes_to_min_heap(frecuency_dictionary.clone());
+        let graph = self.build_graph(&mut min_heap)?;
+        self.add_graph(graph);
+        println!("{:?}", self.graph);
+        Ok(())
+    }
+
+    
 }
 
 
