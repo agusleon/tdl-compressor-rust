@@ -324,3 +324,83 @@ impl Compressor {
 
 
 
+
+
+#[cfg(test)]
+mod tests {
+   
+    use std::sync::mpsc::{Sender, Receiver, self};
+    use crate::{file::file::read_file, graph::{node::Node, graph::Graph}, compression::compressor::Compressor};
+
+ 
+
+    #[test]
+    fn calculate_byte_frequency_works_ok_test() {
+    let (tx, rx): (Sender<usize>, Receiver<usize>) = mpsc::channel();
+    let directory = "./source_files/".to_string();
+    let compressor = Compressor::new(directory, "test_compressions.txt".to_string(), tx, true);
+    //return vec<u8>
+    let bytes = read_file("./src/test_compressions.txt");
+    let hash_map = compressor.unwrap().calculate_byte_frequency();
+    assert_eq!(hash_map.contains_key(&116), true);
+    assert_eq!(hash_map.contains_key(&101), true);
+    assert_eq!(hash_map.contains_key(&115), true);
+
+
+    for (key, value) in hash_map.iter() {
+        assert_eq!(value,&1)
+    
+    }
+
+    }
+  
+    #[test]
+    fn build_graph_works_ok_test() {
+
+  
+    let (tx, rx): (Sender<usize>, Receiver<usize>) = mpsc::channel();
+    let directory = "./source_files/".to_string();
+    let compressor = Compressor::new(directory, "test_compressions.txt".to_string(), tx, true);
+
+    //return vec<u8>
+    let bytes = read_file("./src/test_compressions.txt");
+    let hash_map = compressor.unwrap().calculate_byte_frequency();
+    let mut min_heap = compressor.unwrap().from_bytes_to_min_heap(hash_map);
+    let graph = compressor.unwrap().build_graph(&mut min_heap);
+    println!("{:?}",graph);
+
+
+    let root = Node::new(
+        None,
+        3,
+        Some(Box::new(
+            Node::new(
+            Some(115),
+            1,
+            None,
+            None,
+        ))),
+        Some(Box::new(
+            Node::new(
+            None,
+            2,
+            Some(Box::new(
+                Node::new(
+                Some(116),
+                1,
+                None,
+                None,
+            ))),
+            Some(Box::new(Node::new(
+                Some(101),
+                1,
+                None,
+                None
+            ))
+        ))),
+    ));
+    let graphMock = Graph::new(root);
+    assert_eq!(graph.unwrap(),graphMock)
+
+    } 
+}
