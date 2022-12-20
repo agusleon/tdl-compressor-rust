@@ -340,8 +340,9 @@ mod tests {
     let directory = "./source_files/".to_string();
     let compressor = Compressor::new(directory, "test_compressions.txt".to_string(), tx, true);
     //return vec<u8>
-    let bytes = read_file("./src/test_compressions.txt");
+    
     let hash_map = compressor.unwrap().calculate_byte_frequency();
+    println!("{:?}",hash_map);
     assert_eq!(hash_map.contains_key(&116), true);
     assert_eq!(hash_map.contains_key(&101), true);
     assert_eq!(hash_map.contains_key(&115), true);
@@ -360,13 +361,13 @@ mod tests {
   
     let (tx, rx): (Sender<usize>, Receiver<usize>) = mpsc::channel();
     let directory = "./source_files/".to_string();
-    let compressor = Compressor::new(directory, "test_compressions.txt".to_string(), tx, true);
+    let compressor = Compressor::new(directory, "test_compressions.txt".to_string(), tx, true).unwrap();
 
     //return vec<u8>
     let bytes = read_file("./src/test_compressions.txt");
-    let hash_map = compressor.unwrap().calculate_byte_frequency();
-    let mut min_heap = compressor.unwrap().from_bytes_to_min_heap(hash_map);
-    let graph = compressor.unwrap().build_graph(&mut min_heap);
+    let hash_map = compressor.calculate_byte_frequency();
+    let mut min_heap = compressor.from_bytes_to_min_heap(hash_map);
+    let graph = compressor.build_graph(&mut min_heap);
     println!("{:?}",graph);
 
 

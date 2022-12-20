@@ -58,3 +58,9 @@ impl Graph {
 
     
 }
+
+impl PartialEq for Graph{
+    fn eq(&self, other: &Graph) -> bool {
+        self.root == other.root
+    }
+}
