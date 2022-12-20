@@ -109,3 +109,14 @@ impl PartialEq for Node {
         self.frequency == other.frequency
     }
 }
+
+impl Clone for Node {
+    fn clone(&self) -> Self {
+        Node {
+            byte: self.byte,
+            frequency: self.frequency,
+            node_left: self.node_left.clone(),
+            node_right: self.node_right.clone()
+        }
+    }
+}

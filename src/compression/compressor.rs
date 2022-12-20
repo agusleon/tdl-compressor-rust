@@ -17,7 +17,7 @@ pub struct Compressor {
     pub original_file_length: usize,
     pub compressed_file: File,
     pub compressed_file_length: usize,
-    pub graph: Option<Graph>
+    pub graph: Option<Box<Graph>>
 }
 
 impl Compressor {
@@ -61,7 +61,7 @@ impl Compressor {
     }
 
     pub fn add_graph(&mut self, graph: Graph) {
-        self.graph = Some(graph);
+        self.graph = Some(Box::new(graph));
     }
 
     pub fn start_compressor(&mut self) -> Result<(), CompressionError> {
@@ -143,7 +143,7 @@ impl Compressor {
     
         let compression_dictionary = self.make_byte_dictionary(frecuency_dictionary.clone())?;
         //println!("{:?}", frecuency_dictionary);
-        //println!("{:?}", compression_dictionary);
+        println!("{:?}", compression_dictionary);
 
 
     
@@ -151,7 +151,7 @@ impl Compressor {
         let mut compressed_string = String::new();
         let mut compressed_bytes = Vec::<u8>::new();
 
-        //println!("{:?}",self.data);
+        println!("{:?}",self.data);
 
         for byte in self.data.iter() {
 
@@ -165,12 +165,15 @@ impl Compressor {
                 
                 if compressed_string.len() > BYTE_LENGTH {
                     let first_eight = &compressed_string[0..8];
+                    println!("{}", first_eight);
                     let tail = &compressed_string[8..];
                     byte_compressed = u8::from_str_radix(&first_eight, 2)?;
                     compressed_string = format!("{}", tail);
                 } else {
                     byte_compressed = u8::from_str_radix(&compressed_string, 2)?;
+                    println!("{}", compressed_string);
                     compressed_string = String::new();
+                    
                 }
 
                 compressed_bytes.push(byte_compressed);
@@ -179,23 +182,42 @@ impl Compressor {
 
             }
             compressed_string = format!("{}{}", compressed_string, path.unwrap());
+
         }
+        println!("{}", compressed_string);
+        if compressed_string.len() != 0 {
+            let byte_compressed = u8::from_str_radix(&compressed_string, 2)?;
+            compressed_bytes.push(byte_compressed);
+        }
+        println!("{:?}", compressed_bytes);
 
-        //println!("{:?}",compressed_bytes);
-        
+        let mut bit_data = String::new();
 
-        // pasar frecuency_dictionary a string y despues a bytes
-        
-        //println!("{:?}", frecuency_dictionary);
+        while i < compressed_bytes.len() - 1{
+            let byte = compressed_bytes[i];
+            println!("{}", byte);
+
+            let bit_string = format!("{:0>8}", format!("{:b}", byte));
+            println!("{}", bit_string);
+            bit_data = format!("{}{}", bit_data, bit_string);
+            i += 1;
+        }
+        let byte = compressed_bytes[i];
+        println!("{}", byte);
+        let bit_string = format!("{:b}", byte);
+        println!("{}", bit_string);
+        bit_data = format!("{}{}", bit_data, bit_string);
+
+        println!("{}", bit_data);
+
         serde_json::to_writer(&self.compressed_file, &frecuency_dictionary).unwrap();
         self.compressed_file.write(&compressed_bytes)?;
-    
         Ok(())
     
     }
 
     pub fn decompress(&mut self, file_path: String) -> Result<(), CompressionError> {
-        println!("{:?}", file_path);
+        
         let file_content = read_file(&file_path)?;
         let mut frequency_bytes = Vec::<u8>::new();
         let mut i = 0;
@@ -210,16 +232,47 @@ impl Compressor {
             }
         }
         let frecuency_dictionary_str = std::str::from_utf8(&frequency_bytes).unwrap();
+        
+        
         let frecuency_dictionary:HashMap<u8, usize> = serde_json::from_str(&frecuency_dictionary_str).unwrap();
+        
+        
 
         let mut min_heap = self.from_bytes_to_min_heap(frecuency_dictionary.clone());
-        let graph = self.build_graph(&mut min_heap)?;
-        self.add_graph(graph);
-        println!("{:?}", self.graph);
-        Ok(())
-    }
+        let mut graph = self.build_graph(&mut min_heap)?;
 
-    
+        //println!("{:?}", self.graph);
+        let mut bit_data = String::new();
+
+        while i < file_content.len() - 1{
+            let byte = file_content[i];
+            println!("{}", byte);
+
+            let bit_string = format!("{:0>8}", format!("{:b}", byte));
+            println!("{}", bit_string);
+            bit_data = format!("{}{}", bit_data, bit_string);
+            i += 1;
+        }
+        //Esto es solo para el ultimo para que no tenga 0's al principio
+        let byte = file_content[i];
+        let bit_string = format!("{:b}", byte);
+        bit_data = format!("{}{}", bit_data, bit_string);
+
+        println!("{:?}", graph);
+        println!("{}", bit_data);
+        for c in bit_data.chars() {
+            if c == '0' {
+                graph.go_left();
+            } else {
+                graph.go_right();
+            }
+            if graph.is_leaf() {
+                self.compressed_file.write(&[graph.get_byte().unwrap()])?;
+                graph.reset();
+            }
+        }
+        Ok(()) 
+    }
 }
 
 
