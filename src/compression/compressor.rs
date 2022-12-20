@@ -1,9 +1,12 @@
-use std::collections::{BinaryHeap, HashMap};
+use std::{collections::{BinaryHeap, HashMap}, thread::sleep};
 use crate::{graph::{node::Node, graph::Graph}, utils::error::CompressionError, file::{file::read_file}};
 use itertools::Itertools;
 use std::fs::File;
 use std::io::Write;
+use std::sync::mpsc;
+use std::time::Duration;
 
+const PERCENTAGE_COMPRESS: f32 = 0.1;
 const BYTE_LENGTH: usize = 8;
 
 #[derive(Debug)]
@@ -13,23 +16,38 @@ pub struct Compressor {
     pub original_file_length: usize,
     pub compressed_file: File,
     pub compressed_file_length: usize,
-    pub graph: Option<Graph>
+    pub graph: Option<Graph>,
+    pub logger: mpsc::Sender<usize>
 }
 
 impl Compressor {
 
-    pub fn new(directory:String, filename: String) -> Result<Self, CompressionError> {
+    pub fn new(directory:String, filename: String, tx: mpsc::Sender<usize>, compress: bool) -> Result<Self, CompressionError> {
 
         let filepath = format!("{}{}", directory, filename);
         let bytes = read_file(&filepath)?;
-        println!("{}", filepath);
+
         let path_vec: Vec<&str> = filename.split('.').collect();
-        println!("{:?}", path_vec);
+
         let filename = path_vec[0].to_string();
-        println!("{}", filename);
+
         let file_length = bytes.len();
 
+        if !compress {
+            let compressor = Compressor {
+                filename: filename.clone(),
+                data: Vec::new(),
+                original_file_length: file_length,
+                compressed_file: File::create(format!("./decompressed_files/{}_decompressed.txt",filename))?,
+                compressed_file_length: 0,
+                graph: None, 
+                logger: tx
+            };
+            return Ok(compressor);
+        } 
+
         let compressed_filename = format!("./compressed_files/{}_compressed",filename);
+        
         let compressed_file = File::create(compressed_filename)?;
 
         let compressor = Compressor {
@@ -38,7 +56,8 @@ impl Compressor {
             original_file_length: file_length,
             compressed_file,
             compressed_file_length: 0,
-            graph: None
+            graph: None,
+            logger: tx
         };
 
         Ok(compressor)
@@ -56,6 +75,14 @@ impl Compressor {
         self.add_graph(graph);
 
         self.compress(hash_map.clone())?;
+
+        Ok(())
+
+    }
+
+    pub fn start_decompressor(&mut self) -> Result<(), CompressionError> {
+
+        self.decompress()?;
 
         Ok(())
 
@@ -109,41 +136,157 @@ impl Compressor {
             },
             None => {return Err(CompressionError::FullNode)}
         }
-    
-        println!("{:?}", compression_dictionary);
+
 
         Ok(compression_dictionary)
     }
 
-    pub fn from_hashmap_to_string(&self, compression_dictionary: HashMap<u8, String>) {
-
-        for (key,value) in compression_dictionary {
-
-        }
-    }
-    
     pub fn compress(&mut self, frecuency_dictionary: HashMap<u8, usize>) -> Result<(),CompressionError>{
     
-        let compression_dictionary = self.make_byte_dictionary(frecuency_dictionary)?;
-        println!("{:?}", compression_dictionary);
+        let compression_dictionary = self.make_byte_dictionary(frecuency_dictionary.clone())?;
+        //println!("{:?}", frecuency_dictionary);
+        // println!("{:?}", compression_dictionary);
 
-
-    
-        let mut i = 0;
         let mut compressed_string = String::new();
         let mut compressed_bytes = Vec::<u8>::new();
 
-        println!("{:?}",self.data);
+        for byte in self.data.iter() {
+            let path = compression_dictionary.get(&byte);
+            compressed_string = format!("{}{}", compressed_string, path.unwrap());
+        }
+
+        let mut size_tmp_compressed = 0.0;
+        let mut percentage_compressed;
+        let mut byte_compressed;
+        
+        while compressed_string.len() > BYTE_LENGTH {
+
+            size_tmp_compressed += 1.0;
+
+            let first_eight = &compressed_string[0..8];
+            let tail = &compressed_string[8..];
+            byte_compressed = u8::from_str_radix(&first_eight, 2)?;
+            compressed_string = format!("{}", tail);
+            compressed_bytes.push(byte_compressed);
+
+            percentage_compressed = size_tmp_compressed/(self.original_file_length as f32);
+                
+            if percentage_compressed >=  PERCENTAGE_COMPRESS {
+                sleep(Duration::from_millis(1000));
+                self.logger.send(1)?;
+                size_tmp_compressed = 0.0;
+            }
+        }
+
+        let last_compressed_string = format!("{:0>8}", compressed_string);
+        let last_string_length = compressed_string.len() as u8;
+
+        byte_compressed = u8::from_str_radix(&last_compressed_string, 2)?;
+        compressed_bytes.push(byte_compressed);
+        self.logger.send(1)?;
+        
+        serde_json::to_writer(&self.compressed_file, &frecuency_dictionary).unwrap();
+        self.compressed_file.write(&compressed_bytes)?;
+        self.compressed_file.write(&[last_string_length])?;
+
+        Ok(())
+    
+    }
+
+
+    pub fn decompress(&mut self) -> Result<(), CompressionError> {
+        
+        let file_path = format!("./compressed_files/{}", self.filename);
+        let file_content = read_file(&file_path)?;
+        let mut frequency_bytes = Vec::<u8>::new();
+        let mut i = 0;
+
+        for byte in file_content.iter() {
+            if *byte == " ".as_bytes()[0] {
+                continue;
+            }
+            frequency_bytes.push(*byte);
+            i += 1;
+            if *byte == "}".as_bytes()[0]{
+                break;
+            }
+        }
+
+        let frecuency_dictionary_str = std::str::from_utf8(&frequency_bytes).unwrap();
+        
+        let frecuency_dictionary:HashMap<u8, usize> = serde_json::from_str(&frecuency_dictionary_str).unwrap();
+
+        let mut min_heap = self.from_bytes_to_min_heap(frecuency_dictionary.clone());
+        let mut graph = self.build_graph(&mut min_heap)?;
+
+        //println!("{:?}", self.graph);
+        let mut bit_data = String::new();
+
+        let mut size_tmp_decompressed = 0.0;
+        let mut percentage_decompressed;
+
+        while i < file_content.len() - 2{
+
+            size_tmp_decompressed += 1.0;
+
+            let byte = file_content[i];
+
+            let bit_string = format!("{:0>8}", format!("{:b}", byte));
+            bit_data = format!("{}{}", bit_data, bit_string);
+            i += 1;
+
+            percentage_decompressed = size_tmp_decompressed/(self.original_file_length as f32);
+                
+            if percentage_decompressed >=  PERCENTAGE_COMPRESS {
+                sleep(Duration::from_millis(1000));
+                self.logger.send(1)?;
+                size_tmp_decompressed = 0.0;
+            }
+        }
+
+        //Esto es solo para el ultimo para que no tenga 0's al principio
+        let last_byte = file_content[i];
+        let bit_string = format!("{:b}", last_byte);
+
+        let length_last_byte = file_content[i + 1] as usize;
+        let num_of_zeros = length_last_byte - bit_string.len();
+        let zeros = std::iter::repeat("0").take(num_of_zeros).collect::<String>();
+        let last_bit_string = format!("{}{}", zeros, bit_string);
+        bit_data = format!("{}{}", bit_data, last_bit_string);
+
+        for c in bit_data.chars() {
+            if c == '0' {
+                graph.go_left()?;
+            } else {
+                graph.go_right()?;
+            }
+            if graph.is_leaf() {
+                self.compressed_file.write(&[graph.get_byte().unwrap()])?;
+                graph.reset();
+            }
+        }
+        Ok(()) 
+    }
+
+    pub fn compress_old(&mut self, frecuency_dictionary: HashMap<u8, usize>) -> Result<(),CompressionError>{
+    
+        let compression_dictionary = self.make_byte_dictionary(frecuency_dictionary)?;
+
+        let mut compressed_string = String::new();
+        let mut compressed_bytes = Vec::<u8>::new();
+
+        let mut size_tmp_compressed = 0.0;
+        let mut percentage_compressed;
 
         for byte in self.data.iter() {
 
-            let path = compression_dictionary.get(&byte);
-            println!("{:?} : {:?}",byte, path.unwrap());
+            size_tmp_compressed += 1.0;
 
+            let path = compression_dictionary.get(&byte);
             
             if compressed_string.len() >= BYTE_LENGTH {
 
-                let mut byte_compressed = 0;
+                let byte_compressed;
                 
                 if compressed_string.len() > BYTE_LENGTH {
                     let first_eight = &compressed_string[0..8];
@@ -156,14 +299,22 @@ impl Compressor {
                 }
 
                 compressed_bytes.push(byte_compressed);
+
+                percentage_compressed = size_tmp_compressed/(self.original_file_length as f32);
                 
-                println!("{}", compressed_string);
+                if percentage_compressed >=  PERCENTAGE_COMPRESS {
+                    sleep(Duration::from_millis(1000));
+                    self.logger.send(1)?;
+                    size_tmp_compressed = 0.0;
+                }
+
+                
 
             }
             compressed_string = format!("{}{}", compressed_string, path.unwrap());
         }
-
-        println!("{:?}",compressed_bytes);
+        
+        self.logger.send(1)?;
         self.compressed_file.write(&compressed_bytes)?;
     
         Ok(())

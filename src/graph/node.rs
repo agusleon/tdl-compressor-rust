@@ -94,7 +94,10 @@ impl Eq for Node {}
 
 impl Ord for Node {
     fn cmp(&self, other: &Node) -> Ordering {
-        self.frequency.cmp(&other.frequency).reverse()
+        match self.frequency.cmp(&other.frequency).reverse() {
+            Ordering::Equal => {self.byte.cmp(&other.byte).reverse()},
+            other => {return other;}
+        }
     }
 }
 
@@ -107,5 +110,16 @@ impl PartialOrd for Node {
 impl PartialEq for Node {
     fn eq(&self, other: &Node) -> bool {
         self.frequency == other.frequency
+    }
+}
+
+impl Clone for Node {
+    fn clone(&self) -> Self {
+        Node {
+            byte: self.byte,
+            frequency: self.frequency,
+            node_left: self.node_left.clone(),
+            node_right: self.node_right.clone()
+        }
     }
 }
