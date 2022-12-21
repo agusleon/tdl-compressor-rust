@@ -265,66 +265,10 @@ impl Compressor {
                 graph.reset();
             }
         }
+        println!("Decompression finished");
         Ok(()) 
     }
-
-    pub fn compress_old(&mut self, frecuency_dictionary: HashMap<u8, usize>) -> Result<(),CompressionError>{
-    
-        let compression_dictionary = self.make_byte_dictionary(frecuency_dictionary)?;
-
-        let mut compressed_string = String::new();
-        let mut compressed_bytes = Vec::<u8>::new();
-
-        let mut size_tmp_compressed = 0.0;
-        let mut percentage_compressed;
-
-        for byte in self.data.iter() {
-
-            size_tmp_compressed += 1.0;
-
-            let path = compression_dictionary.get(&byte);
-            
-            if compressed_string.len() >= BYTE_LENGTH {
-
-                let byte_compressed;
-                
-                if compressed_string.len() > BYTE_LENGTH {
-                    let first_eight = &compressed_string[0..8];
-                    let tail = &compressed_string[8..];
-                    byte_compressed = u8::from_str_radix(&first_eight, 2)?;
-                    compressed_string = format!("{}", tail);
-                } else {
-                    byte_compressed = u8::from_str_radix(&compressed_string, 2)?;
-                    compressed_string = String::new();
-                }
-
-                compressed_bytes.push(byte_compressed);
-
-                percentage_compressed = size_tmp_compressed/(self.original_file_length as f32);
-                
-                if percentage_compressed >=  PERCENTAGE_COMPRESS {
-                    sleep(Duration::from_millis(1000));
-                    self.logger.send(1)?;
-                    size_tmp_compressed = 0.0;
-                }
-
-                
-
-            }
-            compressed_string = format!("{}{}", compressed_string, path.unwrap());
-        }
-        
-        self.logger.send(1)?;
-        self.compressed_file.write(&compressed_bytes)?;
-    
-        Ok(())
-    
-    }
 }
-
-
-
-
 
 #[cfg(test)]
 mod tests {
@@ -337,7 +281,7 @@ mod tests {
     #[test]
     fn calculate_byte_frequency_works_ok_test() {
     let (tx, rx): (Sender<usize>, Receiver<usize>) = mpsc::channel();
-    let directory = "./source_files/".to_string();
+    let directory = "./test_files/".to_string();
     let compressor = Compressor::new(directory, "test_compressions.txt".to_string(), tx, true);
     //return vec<u8>
     
@@ -360,7 +304,7 @@ mod tests {
 
   
     let (tx, rx): (Sender<usize>, Receiver<usize>) = mpsc::channel();
-    let directory = "./source_files/".to_string();
+    let directory = "./test_files/".to_string();
     let compressor = Compressor::new(directory, "test_compressions.txt".to_string(), tx, true).unwrap();
 
     //return vec<u8>
@@ -403,5 +347,39 @@ mod tests {
     let graphMock = Graph::new(root);
     assert_eq!(graph.unwrap(),graphMock)
 
-    } 
+    }
+    #[test]
+    //tests that after compressing a file named test_compressions_volume.txt, this one weighs less than the original
+    fn files_weighs_less() {
+        let (tx, rx): (Sender<usize>, Receiver<usize>) = mpsc::channel();
+        let directory = "./test_files/".to_string();
+        let mut compressor = Compressor::new(directory, "test_compressions_volume.txt".to_string(), tx, true).unwrap();
+        compressor.start_compressor().unwrap();
+        let original_file = std::fs::metadata("./test_files/test_compressions_volume.txt").unwrap();
+        let compressed_file = std::fs::metadata("./compressed_files/test_compressions_volume_compressed").unwrap();
+        assert!(compressed_file.len() < original_file.len());
+        std::fs::remove_file("./compressed_files/test_compressions_compressed").unwrap();
+    }
+    #[test]
+    //tests that after comprresing a file named test_compressions.txt, when decompressing it, the data is the same as the original
+    fn decompress_works_ok() {
+        let (tx, rx): (Sender<usize>, Receiver<usize>) = mpsc::channel();
+        let source_directory = "./test_files/".to_string();
+        let compress_directory = "./compressed_files/".to_string();
+
+        let mut compressor = Compressor::new(source_directory, "test_compressions_volume.txt".to_string(), tx.clone(), true).unwrap();
+        compressor.start_compressor().unwrap();
+        
+        let mut decompressor = Compressor::new(compress_directory,"test_compressions_volume_compressed".to_string(), tx, false).unwrap();
+        decompressor.start_decompressor().unwrap();
+
+        let original_file = read_file("./test_files/test_compressions_volume.txt").unwrap();
+        let decompressed_file = read_file("./decompressed_files/test_compressions_volume_compressed_decompressed.txt").unwrap();
+        assert_eq!(original_file, decompressed_file);
+        //ahora borrar los comprimidos y los decomprimidos con remove_file
+        std::fs::remove_file("./compressed_files/test_compressions_volume_compressed").unwrap();
+        std::fs::remove_file("./decompressed_files/test_compressions_volume_compressed_decompressed.txt").unwrap();
+
+        
+    }
 }
