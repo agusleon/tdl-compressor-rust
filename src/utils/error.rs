@@ -1,14 +1,17 @@
 use std::{
     fmt,
+    sync::mpsc::SendError,
 };
-
 
 #[derive(Debug)]
 pub enum CompressionError {
     IOError(std::io::Error),
     UTFError(std::str::Utf8Error),
     ParseIntegerError(std::num::ParseIntError),
-    FullNode
+    FullNode,
+    PoisonError,
+    SenderError(SendError<usize>),
+    NotEnoughArguments(String)
 }
 
 impl fmt::Display for CompressionError {
@@ -17,7 +20,10 @@ impl fmt::Display for CompressionError {
             CompressionError::IOError(err) => write!(f, "{}", err),
             CompressionError::UTFError(err) => write!(f, "{}", err),
             CompressionError::ParseIntegerError(err) => write!(f, "{}", err),
-            CompressionError::FullNode => write!(f, "Node has no empty children")
+            CompressionError::FullNode => write!(f, "Node has no empty children"),
+            CompressionError::PoisonError => write!(f, "The Lock is poisoned."),
+            CompressionError::SenderError(err) => write!(f, "{}", err),
+            CompressionError::NotEnoughArguments(argument) => write!(f, "You are missing one argument {}", argument),
         }
     }
 }
@@ -38,6 +44,12 @@ impl From<std::str::Utf8Error> for CompressionError {
 impl From<std::num::ParseIntError> for CompressionError {
     fn from(err: std::num::ParseIntError) -> Self {
         CompressionError::ParseIntegerError(err)
+    }
+}
+
+impl From<SendError<usize>> for CompressionError {
+    fn from(err: SendError<usize>) -> Self {
+        CompressionError::SenderError(err)
     }
 }
 

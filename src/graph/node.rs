@@ -48,7 +48,44 @@ impl Node {
         self.frequency += frequency;
         Ok(())
     }
-    
+
+    pub fn search(&self, byte: u8, mut path: String) -> Option<String> {
+        
+        if self.byte == Some(byte) {
+            return Some(path);
+        }
+        else if self.node_left.is_some(){
+
+            path.push('0');
+
+            let new_path = self.node_left.as_ref().unwrap().search(byte, path.clone());
+            
+            match new_path{
+                Some(new_path) => return Some(new_path),
+                None => {
+                    path.pop();
+                    if self.node_right.is_some(){
+                        path.push('1');
+                        let new_path = self.node_right.as_ref().unwrap().search(byte, path.clone());
+                        match new_path{
+                            Some(new_path) => return Some(new_path),
+                            None => {
+                                path.pop();
+                                return None;
+                            }
+                        }
+                    }
+                    else{
+                        return None;
+                    }
+                }
+            }
+        }
+        else{
+            return None;
+        }
+    }
+
 }
 
 // We implement some traits so we can use the BinaryHeap object as a MinHeap directly with the Node object
@@ -57,7 +94,10 @@ impl Eq for Node {}
 
 impl Ord for Node {
     fn cmp(&self, other: &Node) -> Ordering {
-        self.frequency.cmp(&other.frequency).reverse()
+        match self.frequency.cmp(&other.frequency).reverse() {
+            Ordering::Equal => {self.byte.cmp(&other.byte).reverse()},
+            other => {return other;}
+        }
     }
 }
 
@@ -70,5 +110,16 @@ impl PartialOrd for Node {
 impl PartialEq for Node {
     fn eq(&self, other: &Node) -> bool {
         self.frequency == other.frequency
+    }
+}
+
+impl Clone for Node {
+    fn clone(&self) -> Self {
+        Node {
+            byte: self.byte,
+            frequency: self.frequency,
+            node_left: self.node_left.clone(),
+            node_right: self.node_right.clone()
+        }
     }
 }
